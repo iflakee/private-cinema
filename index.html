@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Private Cinema</title>
+  <script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+  <style>
+    :root {
+      --bg: #090b10;
+      --panel: #12151e;
+      --border: #222736;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --green: #10b981;
+      --green-border: #059669;
+      --danger: #ef4444;
+      --text: #f3f4f6;
+      --muted: #6b7280;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'JetBrains Mono', -apple-system, BlinkMacSystemFont, monospace;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Экран пин-кода */
+    #auth-screen {
+      position: fixed;
+      inset: 0;
+      background: radial-gradient(circle at center, #141926 0%, #090b10 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 100;
+    }
+    .auth-card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      padding: 32px 28px;
+      border-radius: 14px;
+      width: 100%;
+      max-width: 410px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0,0,0,0.7);
+    }
+    .auth-card h2 {
+      font-size: 20px;
+      margin-bottom: 8px;
+    }
+    .auth-card p {
+      font-size: 12px;
+      color: var(--muted);
+      margin-bottom: 20px;
+    }
+    .invite-notice {
+      display: none;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.35);
+      color: #93c5fd;
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      margin-bottom: 18px;
+    }
+
+    .name-box {
+      margin-bottom: 20px;
+      text-align: left;
+    }
+    .name-box label {
+      display: block;
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    input.text-input, select {
+      width: 100%;
+      padding: 9px 12px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: 8px;
+      font-family: inherit;
+      font-size: 12px;
+      outline: none;
+    }
+    input.text-input:focus {
+      border-color: var(--accent);
+    }
+
+    /* 5 квадратиков пароля */
+    .pin-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .pin-container {
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+    .pin-box {
+      width: 56px;
+      height: 62px;
+      background: var(--bg);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      color: var(--text);
+      font-size: 24px;
+      font-weight: 700;
+      text-align: center;
+      font-family: inherit;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+    .pin-box:focus {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    .pin-box.correct {
+      background: var(--green) !important;
+      border-color: var(--green-border) !important;
+      color: #ffffff !important;
+      box-shadow: 0 0 18px rgba(16, 185, 129, 0.45);
+    }
+    .pin-box.wrong {
+      background: rgba(239, 68, 68, 0.2);
+      border-color: var(--danger);
+      animation: shake 0.3s ease;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      75% { transform: translateX(5px); }
+    }
+
+    /* Верхняя панель кинозала */
+    #app-screen {
+      display: none;
+      height: 100vh;
+      flex-direction: column;
+    }
+    header {
+      min-height: 58px;
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 16px;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .status-bar, .controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .badge {
+      padding: 5px 9px;
+      border-radius: 6px;
+      font-size: 11px;
+      background: #1a1f2e;
+      border: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .badge.online {
+      color: var(--green);
+      border-color: rgba(16, 185, 129, 0.4);
+    }
+
+    button {
+      padding: 8px 13px;
+      border: 1px solid var(--border);
+      background: #1a1f2e;
+      color: var(--text);
+      border-radius: 7px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transition: 0.15s;
+      white-space: nowrap;
+    }
+    button:hover { border-color: var(--muted); }
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+    button.primary:hover { background: var(--accent-hover); }
+    button.invite-btn {
+      background: rgba(16, 185, 129, 0.15);
+      border-color: var(--green);
+      color: #34d399;
+    }
+    button.invite-btn:hover {
+      background: var(--green);
+      color: #fff;
+    }
+    button.mic-on {
+      background: var(--green);
+      border-color: var(--green-border);
+      color: #fff;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.35);
+    }
+    button.danger {
+      background: var(--danger);
+      border-color: var(--danger);
+      color: #fff;
+    }
+
+    .voice-vol {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #1a1f2e;
+      border: 1px solid var(--border);
+      padding: 4px 10px;
+      border-radius: 7px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .voice-vol input[type="range"] {
+      width: 65px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* Видео и Чат */
+    .main-area {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+    .video-container {
+      flex: 1;
+      background: #000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+    video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    .placeholder {
+      position: absolute;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 14px;
+      text-align: center;
+      z-index: 10;
+      background: rgba(18, 21, 30, 0.85);
+      padding: 28px 36px;
+      border-radius: 14px;
+      border: 1px solid var(--border);
+    }
+    .big-share-btn {
+      padding: 12px 22px;
+      font-size: 14px;
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+      border-radius: 8px;
+      box-shadow: 0 8px 25px rgba(59, 130, 246, 0.4);
+    }
+
+    .chat-sidebar {
+      width: 310px;
+      background: var(--panel);
+      border-left: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transition: margin-right 0.25s ease;
+    }
+    .chat-sidebar.hidden { margin-right: -310px; }
+    .chat-messages {
+      flex: 1;
+      padding: 12px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .msg {
+      background: var(--bg);
+      padding: 8px 10px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      word-break: break-word;
+    }
+    .msg .author {
+      color: var(--accent);
+      font-weight: 700;
+      margin-right: 6px;
+    }
+    .msg.sys {
+      color: var(--muted);
+      border-style: dashed;
+    }
+    .chat-input {
+      padding: 10px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 6px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Экран ввода 5-значного пароля -->
+  <div id="auth-screen">
+    <div class="auth-card">
+      <h2>🎬 Закрытый Кинозал</h2>
+      <p>Для входа введите 5-значный код доступа</p>
+
+      <div id="invite-banner" class="invite-notice">
+        🔗 Вы перешли по ссылке-приглашению. После ввода пароля вы автоматически подключитесь к комнате.
+      </div>
+
+      <div class="name-box">
+        <label>Ваше имя в чате</label>
+        <input type="text" id="username" class="text-input" value="Степан" placeholder="Введите имя">
+      </div>
+
+      <span class="pin-label">Пароль доступа</span>
+      <div class="pin-container" id="pin-boxes">
+        <input type="text" inputmode="numeric" maxlength="1" class="pin-box" data-index="0" autofocus>
+        <input type="text" inputmode="numeric" maxlength="1" class="pin-box" data-index="1">
+        <input type="text" inputmode="numeric" maxlength="1" class="pin-box" data-index="2">
+        <input type="text" inputmode="numeric" maxlength="1" class="pin-box" data-index="3">
+        <input type="text" inputmode="numeric" maxlength="1" class="pin-box" data-index="4">
+      </div>
+    </div>
+  </div>
+
+  <!-- Основной экран кинотеатра -->
+  <div id="app-screen">
+    <header>
+      <div class="status-bar">
+        <span id="role-badge" class="badge">👑 ХОСТ</span>
+        <span id="conn-status" class="badge">Инициализация...</span>
+        <span id="stats-badge" class="badge">Ping: -- ms</span>
+        <span id="viewers-badge" class="badge">Участников: 1</span>
+      </div>
+
+      <div class="controls">
+        <!-- Кнопка приглашения -->
+        <button id="invite-btn" class="invite-btn" onclick="copyInviteLink()">
+          🔗 Пригласить по ссылке
+        </button>
+
+        <!-- Кнопка демонстрации экрана (ВСЕГДА ВИДНА) -->
+        <button id="share-btn" class="primary" onclick="toggleScreenShare()">
+          🖥 Запустить экран
+        </button>
+
+        <!-- Кнопка микрофона (Голосовой чат) -->
+        <button id="mic-btn" onclick="toggleMic()">
+          🎤 Микрофон: Выкл
+        </button>
+
+        <!-- Ползунок громкости голоса собеседника -->
+        <div class="voice-vol" title="Громкость микрофона собеседника">
+          <span>🔊 Голос</span>
+          <input type="range" id="voice-volume" min="0" max="1" step="0.05" value="1" oninput="updateVoiceVolume(this.value)">
+        </div>
+
+        <select id="bitrate-select" style="width: auto;" onchange="updateAllBitrates()">
+          <option value="4000000">4 Mbps (720p)</option>
+          <option value="8000000" selected>8 Mbps (1080p)</option>
+          <option value="15000000">15 Mbps (Max)</option>
+        </select>
+
+        <select id="vpn-mode" style="width: auto;" onchange="reconnectWithVpnMode()" title="Режим обхода VPN">
+          <option value="all" selected>🌐 Auto + VPN</option>
+          <option value="relay">🛡 Force TCP VPN</option>
+        </select>
+
+        <button onclick="toggleFullscreen()">⛶ Полный экран</button>
+        <button onclick="toggleChat()">💬 Чат</button>
+      </div>
+    </header>
+
+    <div class="main-area" id="fullscreen-target">
+      <div class="video-container">
+        <video id="main-video" autoplay playsinline controls></video>
+        
+        <!-- Центральная заглушка с большой кнопкой запуска экрана -->
+        <div id="video-placeholder" class="placeholder">
+          <div id="placeholder-text">Трансляция экрана еще не запущена</div>
+          <button class="big-share-btn" onclick="toggleScreenShare()">
+            🖥 Запустить демонстрацию экрана
+          </button>
+        </div>
+      </div>
+
+      <aside class="chat-sidebar" id="chat-sidebar">
+        <div class="chat-messages" id="chat-box"></div>
+        <div class="chat-input">
+          <input type="text" id="chat-msg" class="text-input" placeholder="Написать в чат..." onkeydown="if(event.key==='Enter') sendChat()">
+          <button class="primary" onclick="sendChat()">→</button>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- Контейнер для входящих голосовых потоков (отдельно от звука фильма) -->
+  <div id="voice-audio-container" style="display:none;"></div>
+
+  <script>
+    // Заданный пароль по позициям
+    const SECRET_PIN = ["5", "5", "6", "2", "5"];
+
+    // Проверяем, перешел ли друг по параметру ?join=...
+    const urlParams = new URLSearchParams(window.location.search);
+    const joinRoomId = urlParams.get("join");
+
+    // Сохраняем собственную комнату Хоста в sessionStorage, чтобы F5 не сбрасывал комнату
+    let savedHostRoom = sessionStorage.getItem("my_host_room_id");
+    if (!savedHostRoom) {
+      savedHostRoom = "cinema-55625-" + Math.random().toString(36).substring(2, 8);
+      sessionStorage.setItem("my_host_room_id", savedHostRoom);
+    }
+
+    // Если в ссылке есть ?join= и это НЕ наша собственная комната — мы Зритель
+    const isJoiningFriend = Boolean(joinRoomId && joinRoomId !== savedHostRoom);
+    let role = isJoiningFriend ? "viewer" : "host";
+    let roomPeerId = isJoiningFriend ? joinRoomId : savedHostRoom;
+
+    if (isJoiningFriend) {
+      document.getElementById("invite-banner").style.display = "block";
+      document.getElementById("username").value = "Гость";
+    }
+
+    // Логика 5 квадратиков с закрашиванием в зеленый
+    const pinInputs = Array.from(document.querySelectorAll(".pin-box"));
+
+    pinInputs.forEach((box, idx) => {
+      box.addEventListener("input", (e) => {
+        const val = e.target.value.replace(/\D/g, "");
+        e.target.value = val;
+
+        if (!val) {
+          box.classList.remove("correct", "wrong");
+          return;
+        }
+
+        if (val === SECRET_PIN[idx]) {
+          box.classList.remove("wrong");
+          box.classList.add("correct");
+
+          if (idx < pinInputs.length - 1) {
+            pinInputs[idx + 1].focus();
+          }
+
+          const allCorrect = pinInputs.every((input, i) => input.value === SECRET_PIN[i]);
+          if (allCorrect) {
+            setTimeout(unlockCinema, 200);
+          }
+        } else {
+          box.classList.remove("correct");
+          box.classList.add("wrong");
+          setTimeout(() => {
+            box.value = "";
+            box.classList.remove("wrong");
+          }, 320);
+        }
+      });
+
+      box.addEventListener("keydown", (e) => {
+        if (e.key === "Backspace" && !box.value && idx > 0) {
+          pinInputs[idx - 1].focus();
+          pinInputs[idx - 1].value = "";
+          pinInputs[idx - 1].classList.remove("correct", "wrong");
+        }
+      });
+    });
+
+    // Глобальное состояние
+    let peer = null;
+    let screenStream = null;
+    let micStream = null;
+    let isMicEnabled = false;
+    let userName = "Степан";
+
+    const activeDataConns = new Map();   // peerId -> DataConnection
+    const activeScreenCalls = new Map(); // peerId -> MediaConnection (Экран)
+    const activeVoiceCalls = new Map();  // peerId -> MediaConnection (Микрофон)
+
+    // Конфигурация STUN + TURN для работы через VPN
+    function getPeerConfig() {
+      const transportPolicy = document.getElementById("vpn-mode").value;
+      return {
+        config: {
+          iceTransportPolicy: transportPolicy,
+          iceCandidatePoolSize: 10,
+          iceServers: [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun.cloudflare.com:3478" },
+            {
+              urls: [
+                "turn:openrelay.metered.ca:80",
+                "turn:openrelay.metered.ca:443",
+                "turn:openrelay.metered.ca:443?transport=tcp"
+              ],
+              username: "openrelayproject",
+              credential: "openrelayproject"
+            }
+          ]
+        }
+      };
+    }
+
+    function unlockCinema() {
+      const nameVal = document.getElementById("username").value.trim();
+      if (nameVal) userName = nameVal;
+
+      document.getElementById("auth-screen").style.display = "none";
+      document.getElementById("app-screen").style.display = "flex";
+
+      if (role === "host") {
+        document.getElementById("role-badge").textContent = "👑 ХОСТ";
+        initHost();
+      } else {
+        document.getElementById("role-badge").textContent = "🍿 УЧАСТНИК";
+        document.getElementById("placeholder-text").textContent = "Ожидание демонстрации экрана (или запустите свою)";
+        initViewer();
+      }
+
+      startStatsLoop();
+    }
+
+    // Копирование ссылки-приглашения (не меняет URL самого хоста)
+    async function copyInviteLink() {
+      const inviteUrl = `${window.location.origin}${window.location.pathname}?join=${roomPeerId}`;
+      try {
+        await navigator.clipboard.writeText(inviteUrl);
+        const btn = document.getElementById("invite-btn");
+        const oldText = btn.textContent;
+        btn.textContent = "✅ Ссылка скопирована!";
+        setTimeout(() => (btn.textContent = oldText), 2500);
+        addSystemMsg("Ссылка скопирована! Отправьте её другу в мессенджер.");
+      } catch (err) {
+        prompt("Скопируйте ссылку для приглашения друга:", inviteUrl);
+      }
+    }
+
+    function reconnectWithVpnMode() {
+      addSystemMsg("Переключение сетевого режима VPN...");
+      if (peer) peer.destroy();
+      activeDataConns.clear();
+      activeScreenCalls.clear();
+      activeVoiceCalls.clear();
+      if (role === "host") initHost();
+      else initViewer();
+    }
+
+    // ================= ИНИЦИАЛИЗАЦИЯ PEERJS =================
+    function setupCommonPeerEvents(p) {
+      // Прием входящих медиа-потоков (либо экран фильма, либо микрофон собеседника)
+      p.on("call", (call) => {
+        const callType = (call.metadata && call.metadata.type) ? call.metadata.type : "screen";
+        call.answer();
+
+        if (callType === "mic") {
+          // Входящий голосовой чат
+          activeVoiceCalls.set(call.peer, call);
+          call.on("stream", (remoteVoiceStream) => {
+            attachVoiceStream(call.peer, remoteVoiceStream);
+          });
+          call.on("close", () => {
+            removeVoiceStream(call.peer);
+          });
+        } else {
+          // Входящая демонстрация экрана
+          activeScreenCalls.set(call.peer, call);
+          call.on("stream", (remoteScreenStream) => {
+            const videoEl = document.getElementById("main-video");
+            videoEl.srcObject = remoteScreenStream;
+            videoEl.muted = false; // Зритель слышит звук фильма
+            document.getElementById("video-placeholder").style.display = "none";
+            videoEl.play().catch(() => {
+              addSystemMsg("Нажмите Play на плеере для включения звука фильма.");
+            });
+          });
+          call.on("close", () => {
+            if (!screenStream) {
+              document.getElementById("main-video").srcObject = null;
+              document.getElementById("video-placeholder").style.display = "flex";
+            }
+          });
+        }
+      });
+    }
+
+    function initHost() {
+      peer = new Peer(roomPeerId, getPeerConfig());
+      setupCommonPeerEvents(peer);
+
+      peer.on("open", () => {
+        setStatus("Комната готова", true);
+        addSystemMsg("Комната активна. Нажмите «🖥 Запустить экран» или пригласите друга по ссылке.");
+      });
+
+      peer.on("connection", (conn) => {
+        conn.on("data", (data) => handleData(conn, data));
+        conn.on("close", () => {
+          activeDataConns.delete(conn.peer);
+          activeScreenCalls.delete(conn.peer);
+          removeVoiceStream(conn.peer);
+          updateViewerCount();
+          addSystemMsg("Участник отключился.");
+        });
+      });
+
+      peer.on("error", (err) => {
+        addSystemMsg("Статус сети: " + err.type);
+      });
+    }
+
+    function initViewer() {
+      peer = new Peer(getPeerConfig());
+      setupCommonPeerEvents(peer);
+
+      peer.on("open", () => {
+        connectToHost();
+      });
+
+      peer.on("error", () => {
+        setStatus("Поиск комнаты...", false);
+        setTimeout(connectToHost, 3000);
+      });
+    }
+
+    function connectToHost() {
+      if (!peer || peer.destroyed) return;
+      const conn = peer.connect(roomPeerId, { reliable: true });
+
+      conn.on("open", () => {
+        conn.send({ type: "JOIN", name: userName });
+      });
+
+      conn.on("data", (data) => handleData(conn, data));
+
+      conn.on("close", () => {
+        setStatus("Ожидание хоста...", false);
+        activeDataConns.clear();
+        setTimeout(connectToHost, 3000);
+      });
+    }
+
+    // ================= ДЕМОНСТРАЦИЯ ЭКРАНА =================
+    async function toggleScreenShare() {
+      if (screenStream) {
+        stopScreenShare();
+        return;
+      }
+
+      try {
+        screenStream = await navigator.mediaDevices.getDisplayMedia({
+          video: {
+            width: { ideal: 1920, max: 2560 },
+            height: { ideal: 1080, max: 1440 },
+            frameRate: { ideal: 60, max: 60 }
+          },
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+            channelCount: 2
+          }
+        });
+
+        const videoTrack = screenStream.getVideoTracks()[0];
+        if (videoTrack && "contentHint" in videoTrack) {
+          videoTrack.contentHint = "motion";
+        }
+        videoTrack.onended = () => stopScreenShare();
+
+        const videoEl = document.getElementById("main-video");
+        videoEl.srcObject = screenStream;
+        videoEl.muted = true; // Отключаем локальный звук плеера у стримера, чтобы не двоилось
+        document.getElementById("video-placeholder").style.display = "none";
+
+        const btn = document.getElementById("share-btn");
+        btn.textContent = "⏹ Остановить экран";
+        btn.className = "danger";
+
+        // Отправляем экран всем подключенным участникам
+        for (const [peerId] of activeDataConns) {
+          callPeerWithScreen(peerId);
+        }
+        addSystemMsg("Демонстрация экрана запущена.");
+      } catch (e) {
+        addSystemMsg("Захват экрана отменен: " + e.message);
+      }
+    }
+
+    function stopScreenShare() {
+      if (!screenStream) return;
+      screenStream.getTracks().forEach(t => t.stop());
+      screenStream = null;
+
+      document.getElementById("main-video").srcObject = null;
+      document.getElementById("video-placeholder").style.display = "flex";
+
+      const btn = document.getElementById("share-btn");
+      btn.textContent = "🖥 Запустить экран";
+      btn.className = "primary";
+
+      for (const [, call] of activeScreenCalls) call.close();
+      activeScreenCalls.clear();
+
+      for (const [, conn] of activeDataConns) {
+        if (conn.open) conn.send({ type: "SCREEN_STOPPED" });
+      }
+      addSystemMsg("Демонстрация экрана остановлена.");
+    }
+
+    function callPeerWithScreen(targetPeerId) {
+      if (!screenStream || !peer) return;
+      const call = peer.call(targetPeerId, screenStream, {
+        metadata: { type: "screen", sender: userName }
+      });
+      activeScreenCalls.set(targetPeerId, call);
+
+      call.peerConnection.addEventListener("connectionstatechange", () => {
+        if (call.peerConnection.connectionState === "connected") {
+          applyBitrate(call.peerConnection);
+        }
+      });
+    }
+
+    async function applyBitrate(pc) {
+      const maxBitrate = parseInt(document.getElementById("bitrate-select").value, 10);
+      for (const sender of pc.getSenders()) {
+        if (sender.track && sender.track.kind === "video") {
+          const params = sender.getParameters();
+          if (!params.encodings) params.encodings = [{}];
+          params.encodings[0].maxBitrate = maxBitrate;
+          params.encodings[0].maxFramerate = 60;
+          try { await sender.setParameters(params); } catch (e) {}
+        }
+      }
+    }
+
+    function updateAllBitrates() {
+      for (const [, call] of activeScreenCalls) {
+        if (call.peerConnection) applyBitrate(call.peerConnection);
+      }
+      addSystemMsg("Битрейт видео обновлен.");
+    }
+
+    // ================= ГОЛОСОВОЙ ЧАТ (МИКРОФОН) =================
+    async function toggleMic() {
+      const btn = document.getElementById("mic-btn");
+
+      // Первый запуск микрофона — запрашиваем доступ
+      if (!micStream) {
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true
+            },
+            video: false
+          });
+
+          isMicEnabled = true;
+          btn.textContent = "🎤 Микрофон: Вкл";
+          btn.className = "mic-on";
+
+          // Отправляем голосовой поток всем участникам
+          for (const [peerId] of activeDataConns) {
+            callPeerWithMic(peerId);
+          }
+
+          broadcastSystemChat(`🎙 ${userName} включил(а) микрофон`);
+        } catch (err) {
+          addSystemMsg("Не удалось получить доступ к микрофону: " + err.message);
+        }
+        return;
+      }
+
+      // Если поток уже есть — мгновенно включаем/выключаем дорожку
+      isMicEnabled = !isMicEnabled;
+      micStream.getAudioTracks().forEach(track => {
+        track.enabled = isMicEnabled;
+      });
+
+      if (isMicEnabled) {
+        btn.textContent = "🎤 Микрофон: Вкл";
+        btn.className = "mic-on";
+        broadcastSystemChat(`🎙 ${userName} включил(а) микрофон`);
+      } else {
+        btn.textContent = "🎤 Микрофон: Выкл";
+        btn.className = "";
+        broadcastSystemChat(`🔇 ${userName} выключил(а) микрофон`);
+      }
+    }
+
+    function callPeerWithMic(targetPeerId) {
+      if (!micStream || !peer) return;
+      const call = peer.call(targetPeerId, micStream, {
+        metadata: { type: "mic", sender: userName }
+      });
+      activeVoiceCalls.set(targetPeerId, call);
+    }
+
+    function attachVoiceStream(peerId, stream) {
+      let audioEl = document.getElementById("voice-" + peerId);
+      if (!audioEl) {
+        audioEl = document.createElement("audio");
+        audioEl.id = "voice-" + peerId;
+        audioEl.autoplay = true;
+        document.getElementById("voice-audio-container").appendChild(audioEl);
+      }
+      audioEl.srcObject = stream;
+      audioEl.volume = parseFloat(document.getElementById("voice-volume").value);
+      audioEl.play().catch(() => {});
+    }
+
+    function removeVoiceStream(peerId) {
+      activeVoiceCalls.delete(peerId);
+      const audioEl = document.getElementById("voice-" + peerId);
+      if (audioEl) audioEl.remove();
+    }
+
+    function updateVoiceVolume(val) {
+      const audios = document.querySelectorAll("#voice-audio-container audio");
+      audios.forEach(a => { a.volume = parseFloat(val); });
+    }
+
+    // ================= ОБМЕН ДАННЫМИ И ЧАТ =================
+    function handleData(conn, data) {
+      if (!data || typeof data !== "object") return;
+
+      if (role === "host" && data.type === "JOIN") {
+        activeDataConns.set(conn.peer, conn);
+        updateViewerCount();
+        conn.send({ type: "WELCOME", viewers: activeDataConns.size + 1 });
+        addSystemMsg(`🔥 Присоединился участник: ${data.name}`);
+
+        // Если у хоста уже включен экран или микрофон — сразу отправляем новому участнику
+        if (screenStream) callPeerWithScreen(conn.peer);
+        if (micStream) callPeerWithMic(conn.peer);
+      }
+
+      if (role === "viewer" && data.type === "WELCOME") {
+        activeDataConns.set(conn.peer, conn);
+        setStatus("На связи с Хостом", true);
+        document.getElementById("viewers-badge").textContent = `Участников: ${data.viewers}`;
+        addSystemMsg("Подключено к комнате! Можете включить микрофон или запустить экран.");
+
+        // Если зритель включил микрофон или экран до подключения — отправляем хосту
+        if (screenStream) callPeerWithScreen(conn.peer);
+        if (micStream) callPeerWithMic(conn.peer);
+      }
+
+      if (data.type === "SCREEN_STOPPED") {
+        if (!screenStream) {
+          document.getElementById("main-video").srcObject = null;
+          document.getElementById("video-placeholder").style.display = "flex";
+          addSystemMsg("Собеседник остановил демонстрацию экрана.");
+        }
+      }
+
+      if (data.type === "VIEWER_COUNT") {
+        document.getElementById("viewers-badge").textContent = `Участников: ${data.count}`;
+      }
+
+      if (data.type === "SYS_LOG") {
+        addSystemMsg(data.text);
+      }
+
+      if (data.type === "CHAT") {
+        addChatMsg(data.author, data.text);
+        if (role === "host") {
+          for (const [peerId, c] of activeDataConns) {
+            if (peerId !== conn.peer && c.open) c.send(data);
+          }
+        }
+      }
+    }
+
+    function broadcastSystemChat(text) {
+      addSystemMsg(text);
+      for (const [, conn] of activeDataConns) {
+        if (conn.open) conn.send({ type: "SYS_LOG", text });
+      }
+    }
+
+    function updateViewerCount() {
+      const count = activeDataConns.size + 1;
+      document.getElementById("viewers-badge").textContent = `Участников: ${count}`;
+      for (const [, c] of activeDataConns) {
+        if (c.open) c.send({ type: "VIEWER_COUNT", count });
+      }
+    }
+
+    function sendChat() {
+      const input = document.getElementById("chat-msg");
+      const text = input.value.trim();
+      if (!text) return;
+      input.value = "";
+
+      addChatMsg(userName, text);
+      const payload = { type: "CHAT", author: userName, text };
+      for (const [, conn] of activeDataConns) {
+        if (conn.open) conn.send(payload);
+      }
+    }
+
+    function addChatMsg(author, text) {
+      const box = document.getElementById("chat-box");
+      const div = document.createElement("div");
+      div.className = "msg";
+      const span = document.createElement("span");
+      span.className = "author";
+      span.textContent = author + ":";
+      div.appendChild(span);
+      div.appendChild(document.createTextNode(" " + text));
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function addSystemMsg(text) {
+      const box = document.getElementById("chat-box");
+      const div = document.createElement("div");
+      div.className = "msg sys";
+      div.textContent = text;
+      box.appendChild(div);
+      box.scrollTop = box.scrollHeight;
+    }
+
+    function setStatus(text, isOnline) {
+      const el = document.getElementById("conn-status");
+      el.textContent = text;
+      el.className = isOnline ? "badge online" : "badge";
+    }
+
+    function toggleChat() {
+      document.getElementById("chat-sidebar").classList.toggle("hidden");
+    }
+
+    function toggleFullscreen() {
+      const target = document.getElementById("fullscreen-target");
+      if (!document.fullscreenElement) target.requestFullscreen();
+      else document.exitFullscreen();
+    }
+
+    function startStatsLoop() {
+      setInterval(async () => {
+        const firstCall = activeScreenCalls.values().next().value || activeVoiceCalls.values().next().value;
+        if (!firstCall || !firstCall.peerConnection) return;
+        try {
+          const stats = await firstCall.peerConnection.getStats();
+          stats.forEach(report => {
+            if (report.type === "candidate-pair" && report.state === "succeeded" && report.currentRoundTripTime !== undefined) {
+              const rtt = Math.round(report.currentRoundTripTime * 1000);
+              document.getElementById("stats-badge").textContent = `Ping: ${rtt} ms`;
+            }
+          });
+        } catch (e) {}
+      }, 2000);
+    }
+  </script>
+</body>
+</html>
